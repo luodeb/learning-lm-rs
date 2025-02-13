@@ -1,4 +1,6 @@
 use crate::tensor::Tensor;
+use safetensors::tensor;
+use std::{backtrace, vec};
 
 // get (row) vectors from a 2D table given a list of indices
 pub fn gather(y: &mut Tensor<f32>, indices: &Tensor<u32>, table: &Tensor<f32>) {
@@ -71,7 +73,30 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    let shape = y.shape().to_vec();
+    assert!(shape == x.shape().to_vec());
+    assert!(shape[1] == w.size());
+    let _y = unsafe { y.data_mut() };
+    let _x = x.data();
+    let _w = w.data();
+    for i in 0..shape[0] {
+        let mut sum = 0.0;
+        for j in 0..shape[1] {
+            sum += _x[i * shape[1] + j] * _x[i * shape[1] + j];
+        }
+        sum = sum / (shape[1] as f32) + epsilon;
+        for j in 0..shape[1] {
+            _y[i * shape[1] + j] = _x[i * shape[1] + j] * _w[j] / f32::sqrt(sum);
+        }
+    }
+    // todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+}
+fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + f32::exp(-x))
+}
+
+fn silu(x: f32) -> f32 {
+    x * sigmoid(x)
 }
 
 // y = silu(x) * y
@@ -83,13 +108,41 @@ pub fn swiglu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
     // let _y = unsafe { y.data_mut() };
     // let _x = x.data();
 
-    todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+    let len = y.size();
+    assert!(len == x.size());
+
+    let _y = unsafe { y.data_mut() };
+    let _x = x.data();
+    for i in 0..len {
+        _y[i] = silu(_x[i]) * _y[i];
+    }
+    // todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
 }
 
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    let c_shape = c.shape().to_vec();
+    let a_shape = a.shape().to_vec();
+    let b_shape = b.shape().to_vec();
+    assert!(c_shape[0] == a_shape[0]);
+    assert!(c_shape[1] == b_shape[0]);
+    assert!(a_shape[1] == b_shape[1]);
+
+    let _c = unsafe { c.data_mut() };
+    let _a = a.data();
+    let _b = b.data();
+
+    for i in 0..c_shape[0] {
+        for j in 0..c_shape[1] {
+            let va = _a[i * a_shape[1]..][..a_shape[1]].to_vec();
+            let vb = _b[j * b_shape[1]..][..b_shape[1]].to_vec();
+            let ta = Tensor::new(va, &vec![a_shape[1]]);
+            let tb = Tensor::new(vb, &vec![b_shape[1]]);
+            _c[i * c_shape[1] + j] = alpha * dot(&ta, &tb) + beta * _c[i * c_shape[1] + j];
+        }
+    }
+    // todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
 }
 
 // Dot product of two tensors (treated as vectors)
